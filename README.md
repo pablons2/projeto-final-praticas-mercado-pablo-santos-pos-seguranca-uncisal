@@ -110,23 +110,3 @@ Resumo:
 Complemento CSRF (sessão em cookie): header `X-Requested-With` obrigatório
 nas mutações + verificação de `Origin` —
 `backend/internal/middleware/csrf.go`.
-
----
-
-## Eixo 1 — Infraestrutura (execução do aluno)
-
-Etapas que dependem da conta de nuvem e não são código
-(checklist de `docs/plano.md` §13), na ordem operacional:
-
-- [ ] Provisionar VM Ubuntu/Debian (Free Tier).
-- [ ] Chave SSH instalada; login por senha desabilitado (`PasswordAuthentication no`).
-- [ ] Firewall com portas mínimas (22, 80, 443).
-- [ ] Fail2Ban na porta 22 — 4 tentativas, ban de 24 h.
-- [ ] Nginx/Apache como web server; redirecionamento HTTP→HTTPS.
-- [ ] Certbot com renovação automática; certificado válido.
-- [ ] Qualys SSL Labs nota **A** com PQC ativado.
-- [ ] Repositório público no GitHub; 2FA na conta; Secrets do workflow
-      (`SSH_PRIVATE_KEY`, `SERVER_HOST`) — nunca hardcoded.
-
-O `.env` real, chaves `.pem`/`.key` e o arquivo `*.db` estão fora do
-versionamento (`.gitignore` na raiz e em cada subprojeto).
