@@ -1,11 +1,15 @@
-# CI/CD — IncidentTrack
+# CD — Entrega Contínua (deploy em produção)
 #
 # Esteira exigida pelo escopo (Eixos 1+2+3): a cada `git push` na branch
-# `main`, o GitHub Actions testa o backend, builda o frontend e, se tudo
-# passar, implanta na VM de produção por SSH.
+# `main`, depois que o workflow "CI" passa, o código é implantado na VM
+# de produção por SSH.
+#
+# Gatilho: `workflow_run` — este workflow só roda após o "CI" concluir
+# com sucesso na `main` (nunca implanta com teste vermelho). Também pode
+# ser disparado manualmente (`workflow_dispatch`).
 #
 # NENHUMA credencial fica no arquivo. Tudo vem de GitHub Secrets
-# (Settings → Secrets and variables → Actions):
+# (Settings -> Secrets and variables -> Actions):
 #
 #   SSH_PRIVATE_KEY   chave privada SSH com acesso à VM (formato OpenSSH)
 #   SSH_KNOWN_HOSTS   saída de `ssh-keyscan -H <IP_DA_VM>` (fixa o host)
@@ -15,13 +19,16 @@
 #   JWT_SECRET        segredo HMAC dos JWT em produção (openssl rand -base64 48)
 #   APP_PORT          porta pública da aplicação na VM (ex.: 8080)
 #   APP_ORIGIN        URL pela qual o navegador acessa a app (ex.: https://<IP>)
+#
+# Setup único da VM: clonar o repo em DEPLOY_PATH com `origin` = URL
+# pública do GitHub e instalar Docker Engine + plugin Compose v2.
 
-name: CI/CD
+name: CD
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -29,67 +36,21 @@ permissions:
   contents: read
 
 concurrency:
-  group: cicd-${{ github.ref }}
+  group: cd-production
   cancel-in-progress: false
 
 jobs:
-  # ---------------------------------------------------------------
-  test-backend:
-    name: Backend — vet + test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.23"
-          cache-dependency-path: backend/go.sum
-
-      - name: go vet
-        run: go vet ./...
-
-      - name: go test
-        run: go test -race -count=1 ./...
-
-      - name: Build (sanity)
-        run: go build -o /dev/null ./cmd/api
-
-  # ---------------------------------------------------------------
-  build-frontend:
-    name: Frontend — lint + build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
-
-  # ---------------------------------------------------------------
   deploy:
-    name: Deploy (SSH → docker compose)
+    name: Deploy (SSH -> docker compose)
     runs-on: ubuntu-latest
-    needs: [test-backend, build-frontend]
-    # Só implanta em push direto na main — nunca em pull_request.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # workflow_dispatch: sempre. workflow_run: só se a CI passou.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     environment: production
+    env:
+      # SHA exatamente testado pela CI (ou HEAD da main no disparo manual).
+      GIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Configurar chave SSH
         run: |
@@ -115,17 +76,17 @@ jobs:
             JWT_SECRET="${JWT_SECRET}" \
             APP_PORT="${APP_PORT}" \
             APP_ORIGIN="${APP_ORIGIN}" \
-            GIT_SHA="${{ github.sha }}" \
+            GIT_SHA="${GIT_SHA}" \
             'bash -s' <<'REMOTE'
           set -euo pipefail
 
           cd "${DEPLOY_PATH}"
 
-          echo "→ Atualizando código para ${GIT_SHA}"
+          echo "-> Atualizando código para ${GIT_SHA}"
           git fetch --prune origin main
           git reset --hard "${GIT_SHA}"
 
-          echo "→ Gerando .env de produção (fora do versionamento)"
+          echo "-> Gerando .env de produção (fora do versionamento)"
           umask 077
           cat > .env <<ENV
           APP_ENV=production
@@ -135,14 +96,14 @@ jobs:
           APP_ORIGIN=${APP_ORIGIN}
           ENV
 
-          echo "→ Subindo a stack"
+          echo "-> Subindo a stack"
           docker compose pull --quiet || true
           docker compose up -d --build
 
-          echo "→ Limpando imagens órfãs"
+          echo "-> Limpando imagens órfãs"
           docker image prune -f
 
-          echo "→ Estado dos serviços"
+          echo "-> Estado dos serviços"
           docker compose ps
           REMOTE
 
@@ -151,13 +112,13 @@ jobs:
           APP_ORIGIN: ${{ secrets.APP_ORIGIN }}
         run: |
           for i in $(seq 1 10); do
-            if curl -fsS --max-time 10 "${APP_ORIGIN}/healthz" >/dev/null 2>&1 \
+            if curl -fsS  --max-time 10 "${APP_ORIGIN}/healthz" >/dev/null 2>&1 \
                || curl -fsSk --max-time 10 "${APP_ORIGIN}/healthz" >/dev/null 2>&1; then
-              echo "✓ Aplicação respondendo em ${APP_ORIGIN}/healthz"
+              echo "OK - aplicação respondendo em ${APP_ORIGIN}/healthz"
               exit 0
             fi
-            echo "… tentativa $i falhou, aguardando"
+            echo "... tentativa $i falhou, aguardando"
             sleep 6
           done
-          echo "✗ Aplicação não respondeu ao healthcheck"
+          echo "FALHA - aplicação não respondeu ao healthcheck"
           exit 1

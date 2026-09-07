@@ -136,18 +136,23 @@ A revisão final e a responsabilidade pelo código entregue são do autor.
 
 ## CI/CD — GitHub Actions
 
-Pipeline em [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml),
-disparado a cada `push` na branch `main`:
+Dois workflows encadeados em `.github/workflows/`:
 
-1. **`test-backend`** — `go vet` + `go test -race` + build de sanidade (Go 1.23).
-2. **`build-frontend`** — `npm ci` + `npm run lint` (oxlint) + `npm run build` (Node 22).
-3. **`deploy`** — só em push direto na `main`, após os dois anteriores
-   passarem: conecta na VM por SSH (`IdentitiesOnly` + `known_hosts`
-   fixo), atualiza o código no SHA do commit, gera o `.env` de produção
-   (`APP_ENV=production`, `COOKIE_SECURE=true`) com `umask 077`, roda
-   `docker compose up -d --build` e valida `GET /healthz`.
+**CI — [`ci.yml`](.github/workflows/ci.yml)** — roda em todo `push` e todo
+pull request; é o portão de qualidade:
 
-Nenhuma credencial fica no workflow — tudo vem de **GitHub Secrets**:
+- **`backend`** — `gofmt` + `go vet` + `go test -race` + build de sanidade (Go 1.23).
+- **`frontend`** — `npm ci` + `npm run lint` (oxlint) + type-check e build (Node 22).
+
+**CD — [`deploy.yml`](.github/workflows/deploy.yml)** — disparado por
+`workflow_run` **só quando a CI passa na `main`** (nunca implanta com
+teste vermelho); também aceita disparo manual. Conecta na VM por SSH
+(`IdentitiesOnly` + `known_hosts` fixo), faz `git reset --hard` no SHA
+testado pela CI, gera o `.env` de produção (`APP_ENV=production`,
+`COOKIE_SECURE=true`) com `umask 077`, roda `docker compose up -d --build`
+e valida `GET /healthz`.
+
+Nenhuma credencial fica nos workflows — tudo vem de **GitHub Secrets**:
 `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS`, `SERVER_HOST`, `SERVER_USER`,
-`DEPLOY_PATH`, `JWT_SECRET`, `APP_PORT`, `APP_ORIGIN` (formatos e
-one-time setup da VM documentados no cabeçalho do YAML).
+`DEPLOY_PATH`, `JWT_SECRET`, `APP_PORT`, `APP_ORIGIN` (formatos e setup
+único da VM documentados no cabeçalho do `deploy.yml`).
