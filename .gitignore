@@ -12,6 +12,7 @@
 .env.*
 *.local
 !.env.example
+!.env.production.example
 
 # Chaves SSH / TLS / certificados
 *.pem
