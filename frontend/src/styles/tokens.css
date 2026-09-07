@@ -1,0 +1,25 @@
+/* CSS variables for Radix primitives that consume raw CSS vars.
+   Tailwind tokens live in tailwind.config.js; this file mirrors the
+   subset that Radix components need (portals, overlays, focus rings). */
+
+:root {
+  --it-bg: #ffffff;
+  --it-surface: #f8fafc;
+  --it-border: #e2e8f0;
+  --it-border-strong: #cbd5e1;
+  --it-ink: #0f172a;
+  --it-ink-secondary: #475569;
+  --it-ink-muted: #94a3b8;
+  --it-accent: #4f46e5;
+  --it-accent-hover: #4338ca;
+  --it-accent-subtle: #eef2ff;
+  --it-danger: #ef4444;
+  --it-danger-hover: #dc2626;
+  --it-danger-subtle: #fef2f2;
+  --it-radius-sm: 6px;
+  --it-radius-md: 8px;
+  --it-radius-lg: 12px;
+  --it-shadow-overlay: 0 4px 12px -2px rgb(15 23 42 / 0.10),
+    0 2px 6px -2px rgb(15 23 42 / 0.06);
+  --it-focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px #6366f1;
+}

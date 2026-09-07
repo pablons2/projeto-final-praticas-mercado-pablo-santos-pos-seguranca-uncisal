@@ -1,0 +1,28 @@
+# Segredos e ambiente — NUNCA versionar (docs/plano.md §10)
+.env
+.env.*
+!.env.example
+
+# Banco SQLite e artefatos de runtime
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# Binários compilados
+/bin/
+/incidenttrack
+/api
+*.exe
+
+# Cobertura de testes
+*.out
+coverage.*
+
+# Chaves
+*.pem
+*.key
+
+# SO / editor
+.DS_Store

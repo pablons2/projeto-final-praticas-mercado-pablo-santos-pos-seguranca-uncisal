@@ -1,0 +1,74 @@
+# IncidentTrack — orquestração local.
+#
+#   cp .env.example .env      # e defina JWT_SECRET
+#   docker compose up --build
+#   → aplicação em http://localhost:8080
+#
+# Topologia de origem única: o serviço "web" (Nginx) serve o SPA e faz
+# proxy de /api para o "backend". Não há CORS entre navegador e API, e o
+# cookie de sessão funciona sem exceções. Espelha o deploy de produção
+# (Nginx na frente) descrito em docs/plano.md §1.
+
+name: incidenttrack
+
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: development
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: "file:/data/incidenttrack.db"
+      # Obrigatório — vem do arquivo .env (nunca versionado).
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no arquivo .env (openssl rand -base64 48)}
+      ACCESS_TOKEN_TTL: 15m
+      COOKIE_NAME: it_session
+      # HTTP local → cookie não pode ser Secure. Em produção (HTTPS): true.
+      COOKIE_SECURE: "false"
+      # Deve bater com a URL pela qual o navegador acessa a aplicação.
+      CORS_ALLOWED_ORIGIN: ${APP_ORIGIN:-http://localhost:8080}
+      # A API está atrás do Nginx do serviço "web": confia no X-Forwarded-For.
+      TRUST_PROXY: "true"
+      LOGIN_RATE_LIMIT: "5"
+      LOGIN_RATE_WINDOW: 15m
+      API_RATE_LIMIT: "120"
+      API_RATE_WINDOW: 1m
+      BCRYPT_COST: "12"
+    volumes:
+      - backend-data:/data
+    expose:
+      - "8080"
+    # Para depurar a API direto do host, descomente:
+    # ports:
+    #   - "8081:8080"
+    # Definido também aqui (e não só no Dockerfile) para funcionar com
+    # Podman, cujo formato OCI ignora a instrução HEALTHCHECK da imagem.
+    healthcheck:
+      test: ["CMD", "/app/api", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        # Vazio = mesma origem; o Nginx abaixo faz o proxy de /api.
+        VITE_API_BASE_URL: ""
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  backend-data:

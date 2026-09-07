@@ -1,0 +1,17 @@
+# Contexto de build enxuto — só o necessário para compilar.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-wal
+*.db-shm
+bin/
+*.out
+coverage.*
+Dockerfile
+.dockerignore
+README.md
+Makefile

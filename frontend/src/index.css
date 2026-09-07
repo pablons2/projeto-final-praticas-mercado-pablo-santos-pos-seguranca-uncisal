@@ -1,0 +1,93 @@
+/* IncidentTrack — global styles & Tailwind layers */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* CSS variables for Radix primitives that don't consume Tailwind classes */
+    --it-bg: #ffffff;
+    --it-surface: #f8fafc;
+    --it-border: #e2e8f0;
+    --it-ink: #0f172a;
+    --it-ink-secondary: #475569;
+    --it-ink-muted: #94a3b8;
+    --it-accent: #4f46e5;
+    --it-accent-hover: #4338ca;
+    --it-danger: #ef4444;
+    --it-radius: 8px;
+    --it-focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px #6366f1;
+  }
+
+  * {
+    border-color: theme('colors.border.DEFAULT');
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    font-variation-settings: 'opsz' 32;
+    margin: 0;
+    min-height: 100dvh;
+  }
+
+  /* Visible focus for keyboard users only */
+  :focus-visible {
+    outline: 2px solid theme('colors.accent.ring');
+    outline-offset: 2px;
+  }
+
+  /* Remove outline for mouse users, keep ring utility for explicit cases */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Respect reduced motion globally */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Better defaults for form controls */
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Remove number input spinners */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+@layer utilities {
+  /* Safe-area aware padding for mobile bottom bars / sheets */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  /* Hairline border that stays crisp on retina */
+  .border-hairline {
+    border-width: 0.5px;
+  }
+}
