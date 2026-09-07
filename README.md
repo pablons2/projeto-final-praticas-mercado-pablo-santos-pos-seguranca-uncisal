@@ -13,7 +13,8 @@ Mercado** (Pós — Segurança da Informação e Análise Forense, UNCISAL).
 Stack: **Go** (API REST, `net/http` puro, SQLite sem CGO) + **React**
 (Vite, TypeScript). Norma de segurança aplicada: **OWASP Top 10:2025**.
 
-Planejamento completo em [`docs/plano.md`](docs/plano.md).
+Código escrito e auditado com assistência de IA — ver
+[Desenvolvimento assistido por IA](#desenvolvimento-assistido-por-ia).
 
 ---
 
@@ -84,7 +85,7 @@ Nesse modo, defina no `.env` do backend
 │   ├── src/             pages · features · components · context · routes · lib
 │   ├── nginx.conf       serve o SPA + proxy reverso de /api
 │   └── Dockerfile       build multi-stage → Nginx
-├── docs/plano.md       plano de execução e leitura crítica do escopo
+├── .github/workflows/  esteira de CI/CD (deploy.yml)
 ├── docker-compose.yml  orquestração (origem única via Nginx)
 └── .env.example        variáveis do compose (JWT_SECRET, APP_PORT, APP_ORIGIN)
 ```
@@ -110,3 +111,43 @@ Resumo:
 Complemento CSRF (sessão em cookie): header `X-Requested-With` obrigatório
 nas mutações + verificação de `Origin` —
 `backend/internal/middleware/csrf.go`.
+
+---
+
+## Desenvolvimento assistido por IA
+
+Conforme o escopo da disciplina, todo o desenvolvimento foi feito com
+inteligência artificial na **escrita** e na **auditoria** do código:
+
+- **Escrita:** geração da estrutura Clean Architecture do backend Go, dos
+  usecases, middlewares de segurança, handlers HTTP e da SPA React
+  (componentes, hooks, schemas de validação).
+- **Auditoria:** revisão iterativa das mitigações OWASP Top 10:2025
+  (controle de acesso por `owner_id`, prepared statements, política de
+  senha/bcrypt, headers de segurança, tratamento de `panic`), do
+  `.gitignore` e da esteira de CI/CD, checando cada item contra o
+  `Escopo_e_elementos_obrigatorios.md`.
+- **Ambiente:** IDE baseada em IA (Google Antigravity / equivalente),
+  operada pelo aluno.
+
+A revisão final e a responsabilidade pelo código entregue são do autor.
+
+---
+
+## CI/CD — GitHub Actions
+
+Pipeline em [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml),
+disparado a cada `push` na branch `main`:
+
+1. **`test-backend`** — `go vet` + `go test -race` + build de sanidade (Go 1.23).
+2. **`build-frontend`** — `npm ci` + `npm run lint` (oxlint) + `npm run build` (Node 22).
+3. **`deploy`** — só em push direto na `main`, após os dois anteriores
+   passarem: conecta na VM por SSH (`IdentitiesOnly` + `known_hosts`
+   fixo), atualiza o código no SHA do commit, gera o `.env` de produção
+   (`APP_ENV=production`, `COOKIE_SECURE=true`) com `umask 077`, roda
+   `docker compose up -d --build` e valida `GET /healthz`.
+
+Nenhuma credencial fica no workflow — tudo vem de **GitHub Secrets**:
+`SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS`, `SERVER_HOST`, `SERVER_USER`,
+`DEPLOY_PATH`, `JWT_SECRET`, `APP_PORT`, `APP_ORIGIN` (formatos e
+one-time setup da VM documentados no cabeçalho do YAML).

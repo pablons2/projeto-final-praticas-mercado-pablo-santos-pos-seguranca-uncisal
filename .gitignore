@@ -65,3 +65,8 @@ tmp/
 **/dist/
 **/build/
 **/coverage/
+
+# -------------------------------------------------------------
+# Documentos de planejamento (mantidos fora do versionamento)
+# -------------------------------------------------------------
+docs/
