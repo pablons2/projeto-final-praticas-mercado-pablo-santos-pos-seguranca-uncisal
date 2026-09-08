@@ -1,0 +1,42 @@
+# Override de PRODUÇÃO — aplica-se SOMENTE quando invocado explicitamente:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# (o pipeline .github/workflows/deploy.yml faz isso). O `make up` local
+# continua usando só o docker-compose.yml.
+#
+# Acrescenta um proxy nginx que termina o TLS com key exchange
+# pós-quântico (OpenSSL 3.5) e é o único serviço com portas públicas.
+# Requer Docker Compose >= 2.24 (sintaxe `!reset`).
+
+services:
+  # A aplicação deixa de publicar porta direta: quem fica exposto é o proxy.
+  web:
+    ports: !reset []
+
+  proxy:
+    image: nginx:1.29-alpine
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Nome da lineage do certbot (= CERT_NAME no .env, gerado pelo deploy
+      # a partir de APP_ORIGIN). Ex.: 203.0.113.10
+      CERT_NAME: ${CERT_NAME:?defina CERT_NAME no .env (host de APP_ORIGIN)}
+      # envsubst só mexe em ${CERT_NAME} — nunca nas variáveis do nginx.
+      NGINX_ENVSUBST_FILTER: CERT_NAME
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx/conf.d
+    volumes:
+      - ./deploy/proxy/templates:/etc/nginx/templates:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "-qO-", "https://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 4s
+      start_period: 10s
+      retries: 5
+    restart: unless-stopped

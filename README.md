@@ -149,8 +149,13 @@ pull request; é o portão de qualidade:
 teste vermelho); também aceita disparo manual. Conecta na VM por SSH
 (`IdentitiesOnly` + `known_hosts` fixo), faz `git reset --hard` no SHA
 testado pela CI, gera o `.env` de produção (`APP_ENV=production`,
-`COOKIE_SECURE=true`) com `umask 077`, roda `docker compose up -d --build`
-e valida `GET /healthz`.
+`COOKIE_SECURE=true`, `CERT_NAME`) com `umask 077`, sobe a stack com
+`docker-compose.yml` + [`docker-compose.prod.yml`](docker-compose.prod.yml)
+— este último adiciona o **proxy TLS** ([`deploy/proxy/`](deploy/proxy/),
+`nginx:1.29-alpine` / OpenSSL 3.5) que termina HTTPS com key exchange
+**pós-quântico** (`X25519MLKEM768`), redirect HTTP→HTTPS e HSTS — e valida
+`GET /healthz`. Enquanto o certificado não existir na VM, sobe só a stack
+base. Bootstrap da VM e do TLS em [`deploy/README.md`](deploy/README.md).
 
 Nenhuma credencial fica nos workflows — tudo vem de **GitHub Secrets**:
 `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS`, `SERVER_HOST`, `SERVER_USER`,

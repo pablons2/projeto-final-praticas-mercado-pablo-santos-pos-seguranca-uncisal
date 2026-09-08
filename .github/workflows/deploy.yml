@@ -21,7 +21,11 @@
 #   APP_ORIGIN        URL pela qual o navegador acessa a app (ex.: https://<IP>)
 #
 # Setup único da VM: clonar o repo em DEPLOY_PATH com `origin` = URL
-# pública do GitHub e instalar Docker Engine + plugin Compose v2.
+# pública do GitHub, instalar Docker Engine + Compose v2 (>= 2.24) e
+# fazer o bootstrap TLS (Nginx/Certbot) do guia deploy/README.md §9.
+# Depois disso, cada deploy sobe a stack com `docker-compose.yml` +
+# `docker-compose.prod.yml` (proxy TLS + PQC); enquanto o certificado
+# não existir, sobe só a base.
 
 name: CD
 
@@ -86,6 +90,10 @@ jobs:
           git fetch --prune origin main
           git reset --hard "${GIT_SHA}"
 
+          # Host de APP_ORIGIN (ex.: https://203.0.113.10 -> 203.0.113.10).
+          # É o nome da lineage do certbot e o server_name do proxy TLS.
+          CERT_NAME="$(printf '%s' "${APP_ORIGIN}" | sed -E 's#^https?://##; s#[:/].*$##')"
+
           echo "-> Gerando .env de produção (fora do versionamento)"
           umask 077
           cat > .env <<ENV
@@ -94,17 +102,32 @@ jobs:
           JWT_SECRET=${JWT_SECRET}
           APP_PORT=${APP_PORT}
           APP_ORIGIN=${APP_ORIGIN}
+          CERT_NAME=${CERT_NAME}
           ENV
 
+          # O override de produção (proxy TLS + PQC) só entra quando o
+          # certificado já existe na VM. Sem ele, sobe só a stack base —
+          # rode o bootstrap TLS do guia (deploy/README.md §9).
+          FILES="-f docker-compose.yml"
+          if [ -f "/etc/letsencrypt/live/${CERT_NAME}/fullchain.pem" ]; then
+            FILES="${FILES} -f docker-compose.prod.yml"
+            echo "-> Certificado ${CERT_NAME} encontrado: subindo com proxy TLS"
+          else
+            echo "-> AVISO: /etc/letsencrypt/live/${CERT_NAME} ausente — subindo SEM proxy TLS"
+          fi
+
           echo "-> Subindo a stack"
-          docker compose pull --quiet || true
-          docker compose up -d --build
+          # shellcheck disable=SC2086
+          docker compose ${FILES} pull --quiet || true
+          # shellcheck disable=SC2086
+          docker compose ${FILES} up -d --build --remove-orphans
 
           echo "-> Limpando imagens órfãs"
           docker image prune -f
 
           echo "-> Estado dos serviços"
-          docker compose ps
+          # shellcheck disable=SC2086
+          docker compose ${FILES} ps
           REMOTE
 
       - name: Healthcheck público
