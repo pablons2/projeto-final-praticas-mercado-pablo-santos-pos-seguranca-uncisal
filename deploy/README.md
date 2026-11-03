@@ -35,11 +35,21 @@ Substitua em todo o guia:
 2. **Compartment:** o raiz (default) serve.
 3. **Placement:** deixe o Availability Domain sugerido.
 4. **Image and shape → Edit:**
-   - **Image:** *Canonical Ubuntu* **24.04** (é a mais nova do catálogo
-     Oracle; ver nota de PQC no passo 9).
+   - **Image:** *Canonical Ubuntu Server* na **última versão LTS estável
+     listada no catálogo** (o escopo exige "última versão estável";
+     confira no catálogo a versão mais nova, ex.: 26.04 LTS). Ver nota de
+     PQC no §9.
    - **Shape:** `VM.Standard.A1.Flex` (ARM Ampere, Always Free) com
      **1 OCPU / 6 GB** — ou, se der "out of capacity", `VM.Standard.E2.1.Micro`
-     (AMD, Always Free).
+     (AMD, Always Free, **1 GB de RAM**: crie swap de 2 GB antes do
+     `docker compose up --build`, senão o build de Go/Node pode ser morto
+     por falta de memória):
+
+     ```bash
+     sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+     sudo mkswap /swapfile && sudo swapon /swapfile
+     echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+     ```
 5. **Networking:**
    - **Create new VCN** (deixa o wizard criar VCN + subnet pública).
    - **Assign a public IPv4 address:** *Yes*.
@@ -97,8 +107,19 @@ recusado.
 
 ## 5. Firewall do host (UFW)
 
-A imagem Oracle usa `iptables` com regras próprias; o UFW por cima
-simplifica e cumpre o requisito de firewall no host.
+O UFW é uma camada de gerenciamento sobre o `iptables`. Antes de mexer
+nele, confira as regras que a imagem Oracle já traz, porque elas
+convivem com as do UFW:
+
+```bash
+sudo iptables -S INPUT          # regras atuais (ACCEPT/REJECT/DROP)
+```
+
+Anote a saída: se houver um `REJECT` genérico no fim da chain, as
+regras do UFW precisam estar acima dele (o UFW faz isso automaticamente
+ao habilitar; a verificação final abaixo confirma).
+
+Ordem obrigatória (libere **antes** de habilitar, senão a sessão SSH cai):
 
 ```bash
 sudo apt install -y ufw
@@ -108,11 +129,41 @@ sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw --force enable
-sudo ufw status verbose
+sudo ufw status verbose        # esperado: 22, 80 e 443 ALLOW; resto negado
+sudo iptables -S INPUT         # confirme que o jump para as chains do ufw está no topo
 ```
+
+> **Atenção — Docker ignora o UFW.** Portas publicadas com `ports:` no
+> `docker-compose.yml` são liberadas por regras `DNAT`/`FORWARD` do
+> Docker, que passam por cima do `ufw deny`. Consequência prática: se o
+> `web` publicar `${APP_PORT}` em `0.0.0.0`, a porta 8080 fica pública
+> em HTTP, sem TLS, mesmo com o UFW "fechado". Teste de verificação
+> (de fora da VM, não de dentro):
+>
+> ```bash
+> curl -m 5 http://<IP>:8080/healthz   # deve FALHAR (timeout / connection refused)
+> ```
+>
+> A correção é publicar a porta somente em loopback. Ver a seção
+> "Porta da aplicação" abaixo.
 
 > Se após habilitar o UFW o SSH cair, use o **Console Connection** da
 > Oracle (Instance → Resources → Console connection) para recuperar.
+> Regra de ouro: nunca rode `ufw reset` ou `iptables -F` numa sessão
+> remota sem o console aberto.
+
+**Porta da aplicação (só loopback):** no `docker-compose.yml`, a linha
+do serviço `web` deve ficar como abaixo, para que a app só seja
+acessível pelo proxy do próprio host:
+
+```yaml
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:80"
+```
+
+Em produção, o override `docker-compose.prod.yml` já zera essa porta
+(`ports: !reset []`) e só o `proxy` publica 80/443. A linha acima
+protege a janela em que o certificado ainda não existe (stack base).
 
 ---
 
@@ -161,18 +212,13 @@ cd incidenttrack        # este é o DEPLOY_PATH
 
 ## 9. TLS + PQC — a decisão de arquitetura
 
-**Ubuntu 24.04 (imagem mais nova da Oracle) traz OpenSSL 3.0**, que
-**não** tem o grupo pós-quântico `X25519MLKEM768`. O item "PQC ativado"
-do Qualys exige OpenSSL **3.5+**. Duas saídas:
+**Ubuntu 24.04 traz OpenSSL 3.0**, que **não** tem o grupo pós-quântico
+`X25519MLKEM768`. O item "PQC ativado" do Qualys exige OpenSSL **3.5+**.
 
-- **(A) Recomendada — terminar o TLS num contêiner nginx novo**
-  (`nginx:1.29-alpine` = OpenSSL 3.5). Não mexe no SO, é reproduzível e
-  já entra no `docker compose`. O "web server nginx" do requisito
-  continua sendo nginx, só que containerizado.
-- **(B) Atualizar o SO** para 25.10 (`sudo do-release-upgrade` — três
-  saltos a partir de 24.04, ~1 h, com reboot) e usar nginx do host.
-
-Este guia segue **(A)**.
+Solução adotada: terminar o TLS num contêiner `nginx:1.29-alpine`
+(OpenSSL 3.5), versionado no repositório e iniciado pelo `docker compose`.
+Não mexe no SO do host e é reproduzível. O requisito "Nginx ou Apache" é
+atendido pelo nginx, que roda containerizado.
 
 ### 9.1. Subir a stack da aplicação (sem porta pública ainda)
 
@@ -214,7 +260,7 @@ sudo kill $HTTP_PID
 
 Certificado em `/etc/letsencrypt/live/<IP>/`. É **short-lived (~6 dias)**.
 
-### 9.3. Contêiner proxy TLS (nginx 3.5 + PQC)
+### 9.3. Contêiner proxy TLS (nginx 1.29 / OpenSSL 3.5 + PQC)
 
 O proxy **já está versionado** no repositório — nada de arquivo escrito à
 mão na VM:
@@ -324,27 +370,85 @@ healthcheck em `https://<IP>/healthz`.
 
 ---
 
-## 13. Qualys SSL Labs
+## 13. Testes TLS exigidos pelo escopo (acesso por IP)
 
-1. <https://www.ssllabs.com/ssltest/> → informe `<IP>` → *Do not show
-   the results on the boards* → **Submit**.
-2. Metas:
-   - **Overall Rating: A**.
-   - Em *Configuration → Protocols*: só **TLS 1.2 e 1.3**.
-   - Em *Configuration → Key Exchange* / *Named Groups*: aparece
-     **X25519MLKEM768** (ou `MLKEM768`) → prova o PQC.
-   - HSTS presente.
-3. Se cair de A: revise cadeia do certificado completa (`fullchain.pem`),
-   OCSP stapling, e remova qualquer cipher fraco.
+O escopo oficial separa os testes por tipo de endereço. Como o acesso é
+por **IP sem domínio**, os testes são os da primeira linha abaixo. O
+Qualys SSL Labs (nota A) é o teste do caso **domínio** e não se aplica
+aqui.
+
+| Teste | Critério exigido pelo escopo |
+|---|---|
+| [SSL.org — SSL Certificate Checker](https://www.ssl.org/) | **Certificate Trusted: YES** e **Algorithm / Key Type & Size: Good signature · Acceptable key** |
+| [DigiCert — TLS quantum readiness check](https://www.digicert.com/pqc-checker) | Suporte a **PQC ativado** |
+
+Passos:
+
+1. Rode o teste do SSL.org para `https://<IP>`. Confira os dois campos
+   exigidos. Se o SSL.org não aceitar IP, registre a limitação no README.
+2. Rode o teste da DigiCert com `<IP>`. Confirme que o PQC aparece como
+   ativado. O proxy usa `X25519MLKEM768`, então o resultado esperado é
+   positivo.
+3. Guarde os dois prints (E10 e E11).
+
+> Se o SSL.org ou a DigiCert mostrarem "Trusted: NO" ou "Weak", a causa
+> mais comum é a cadeia incompleta (`fullchain.pem`) ou o certificado de
+> teste (`--staging`). Confira com `sudo certbot certificates`.
+
+**Qualys SSL Labs (só para referência):** não é o critério do IP. Se
+quiser mostrar o grupo PQC também, pode rodar, mas a nota A não substitui
+os dois testes acima.
 
 ---
 
 ## 14. Fechamento (Eixo 2)
 
-- [ ] **Revogar** o PAT `ghp_xTTb…` (<https://github.com/settings/tokens>) e usar um novo.
+- [ ] **Revogar** o token de acesso pessoal exposto no chat
+      (<https://github.com/settings/tokens>) e usar um novo.
 - [ ] Ativar **2FA** na conta `pablons2`.
 - [ ] Confirmar o repositório **público** (Settings → General → Danger Zone).
-- [ ] No `README.md`: adicionar `https://<IP>` (app no ar) e o print da nota Qualys.
+- [ ] No `README.md`: adicionar `https://<IP>` (app no ar) e os prints
+      dos testes SSL.org e DigiCert (E10 e E11).
+
+---
+
+## Mapa de evidências — o que o professor pede × onde comprovar
+
+Use esta tabela para a entrega. Cada linha diz o requisito, a seção deste
+guia que o cumpre e a evidência a capturar (print ou saída de comando).
+**Só marque como feito depois de ver a evidência.**
+
+| # | Requisito do checklist | Seção | Evidência a capturar |
+|---|---|---|---|
+| E1 | VM Free Tier (Oracle) com Ubuntu | §1–§2 | Console: shape, imagem e IP reservado |
+| E2 | Acesso por chave SSH; sem senha | §4 | `sudo sshd -T \| grep -i passwordauth` → `no` |
+| E3 | Firewall só 22, 80, 443 | §3, §5 | `sudo ufw status verbose` + Security List |
+| E4 | Porta da app não exposta | §9.1 / compose | `curl -m 5 http://<IP>:8080/healthz` falha |
+| E5 | Fail2Ban na 22: 4 erros, 24 h | §6 | `sudo fail2ban-client status sshd` + `jail.d/sshd.local` |
+| E6 | Web server (nginx) servindo a app | §9.3 | `docker compose ps` com `proxy` rodando |
+| E7 | Certbot ≥ 5.4, cert para IP (sem domínio) | §9.2 | `certbot --version` + `sudo certbot certificates` |
+| E8 | Autorrenovação configurada **e testada** | §9.4 | `sudo certbot renew --dry-run` com sucesso |
+| E9 | HTTP → HTTPS | §9.3 | `curl -I http://<IP>/` → `301` para `https` |
+| E10 | Certificado confiável e chave adequada (SSL.org) | §13 | Print: *Trusted: YES* e *Good signature · Acceptable key* |
+| E11 | PQC ativado (DigiCert quantum readiness) | §13 | Print mostrando PQC ativado para `<IP>` |
+| E12 | App acessível pelo IP público | §9.3 | Navegador em `https://<IP>` com login |
+| E13 | Repositório público no GitHub | §14 | Print de Settings → General → Visibility |
+| E14 | 2FA ativo; PAT exposto revogado | §14 | Print da tela de 2FA + tela de tokens |
+| E15 | `.gitignore` sem segredos | repo | `git check-ignore -v .env` |
+| E16 | CI verde na `main` | §12 | Print da aba Actions com CI `success` |
+| E17 | CD automatizado a cada push | §10–§12 | Run do CD com healthcheck `OK` |
+| E18 | README com IP, prints dos testes TLS e OWASP | §14 | README atualizado e commitado |
+| E19 | Login, página interna e logout funcionando | app | Smoke test (sequência abaixo) |
+| E20 | Incidente de outro usuário → 404 | app | Print do 404 no smoke test |
+
+**Smoke test (E19–E20):** registrar → logar → criar, editar e excluir
+incidente → logout. Com outro usuário, abrir o ID do primeiro usuário
+deve retornar 404.
+
+> **Pendência de interpretação:** o checklist diz "desenvolvida com IA via
+> Antigravity". O README declara "Google Antigravity / equivalente". Se o
+> professor exigir a ferramenta específica, o README precisa dizer isso
+> sem ambiguidade.
 
 ---
 
