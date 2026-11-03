@@ -61,7 +61,9 @@ services:
         # Vazio = mesma origem; o Nginx abaixo faz o proxy de /api.
         VITE_API_BASE_URL: ""
     ports:
-      - "${APP_PORT:-8080}:80"
+      # Só loopback: o Docker ignora o UFW em portas publicadas, então
+      # 0.0.0.0 deixaria a app exposta em HTTP. Ver deploy/README.md §5.
+      - "127.0.0.1:${APP_PORT:-8080}:80"
     depends_on:
       backend:
         condition: service_healthy
