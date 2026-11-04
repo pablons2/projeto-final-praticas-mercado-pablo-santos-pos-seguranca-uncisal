@@ -78,9 +78,23 @@ npm ci
 npm test
 ```
 
-O Playwright usa o Google Chrome instalado no sistema (`/usr/bin/google-chrome`,
-ajustável por `CHROME_PATH`), porque o Chromium empacotado não tem build para
-o Ubuntu 26.04. Cada execução usa e-mails únicos, então pode ser repetida.
+**No CI** (job `e2e` em [`ci.yml`](.github/workflows/ci.yml)): a stack sobe com
+`make up`, o teste roda com o Chromium do Playwright e o job **anexa a gravação
+em vídeo e o relatório HTML** como artefato `e2e-gravacao-e-relatorio` (aba
+*Actions* → execução → *Artifacts*). Uma falha no smoke test bloqueia o deploy.
+
+**Gravação de referência:** [`evidencias/e2e/smoke-gravacao.webm`](evidencias/e2e/smoke-gravacao.webm).
+
+**Localmente no Ubuntu 26.04** (o Playwright não baixa Chromium nem ffmpeg para
+essa versão): use o Chrome do sistema com `CHROME_PATH=/usr/bin/google-chrome npm test`
+e aponte o ffmpeg do Playwright para o ffmpeg do sistema:
+
+```bash
+D=~/.cache/ms-playwright/ffmpeg-1011
+mkdir -p "$D" && ln -sf /usr/bin/ffmpeg "$D/ffmpeg-linux" && touch "$D/INSTALLATION_COMPLETE"
+```
+
+Cada execução usa e-mails únicos, então pode ser repetida.
 
 ---
 

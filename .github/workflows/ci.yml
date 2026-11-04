@@ -76,3 +76,60 @@ jobs:
 
       - name: Type-check + build
         run: npm run build
+
+  e2e:
+    name: E2E — Playwright (stack Docker)
+    runs-on: ubuntu-latest
+    # Só roda se backend e frontend passarem. O CD espera esta CI inteira,
+    # então um smoke test vermelho também bloqueia o deploy.
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Subir a stack (make up)
+        run: make up
+
+      - name: Aguardar a aplicação responder
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
+              echo "OK - aplicação respondendo"
+              exit 0
+            fi
+            echo "... tentativa $i, aguardando"
+            sleep 2
+          done
+          echo "FALHA - aplicação não subiu"
+          docker compose logs --tail=80
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Instalar dependências e Chromium
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium ffmpeg
+
+      - name: Rodar smoke test (gera vídeo e relatório)
+        working-directory: e2e
+        run: npm test
+
+      - name: Anexar gravação e relatório
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-gravacao-e-relatorio
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Derrubar a stack
+        if: always()
+        run: make down
