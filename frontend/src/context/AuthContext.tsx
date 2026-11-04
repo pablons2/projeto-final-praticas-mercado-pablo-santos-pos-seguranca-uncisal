@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { http, ApiError } from '@/lib/http'
 import type { User } from '@/lib/api-types'
 
@@ -23,8 +24,20 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUserState] = useState<User | null>(null)
   const [bootstrapped, setBootstrapped] = useState(false)
+  const queryClient = useQueryClient()
+
+  // Cache de dados é por usuário: ao trocar de conta (login, cadastro ou
+  // logout) descartamos tudo que foi buscado antes, para que a lista de
+  // incidentes de um usuário nunca apareça para o próximo na mesma aba.
+  const setUser = useCallback(
+    (next: User | null) => {
+      queryClient.clear()
+      setUserState(next)
+    },
+    [queryClient],
+  )
 
   // Single bootstrap call on mount: ask the server who we are via the
   // HttpOnly cookie. 401 → not authenticated (expected, not an error).
@@ -33,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ;(async () => {
       try {
         const data = await http.get<User>('/api/auth/me')
-        if (active) setUser(data)
+        if (active) setUserState(data)
       } catch (err) {
         if (active && err instanceof ApiError && err.status !== 401) {
           // Network blip etc. — leave user null, routes will handle.
@@ -56,11 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setUser(null)
     }
-  }, [])
+  }, [setUser])
 
   const value = useMemo<AuthContextValue>(
     () => ({ user, bootstrapped, setUser, logout }),
-    [user, bootstrapped, logout],
+    [user, bootstrapped, setUser, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
