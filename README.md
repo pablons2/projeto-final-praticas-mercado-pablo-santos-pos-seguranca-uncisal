@@ -18,6 +18,18 @@ Código escrito e auditado com assistência de IA — ver
 
 ---
 
+## Aplicação em produção
+
+A aplicação está no ar, acessível por **IP público** (sem domínio):
+
+**https://163.176.179.49**
+
+- HTTP redireciona automaticamente para HTTPS (`301`).
+- Certificado Let's Encrypt emitido para o IP, renovado automaticamente.
+- Hospedagem: Oracle Cloud (Free Tier), Ubuntu 26.04.1 LTS, região `sa-saopaulo-1`.
+
+---
+
 ## Executar com Docker (recomendado)
 
 Pré-requisitos: Docker + Compose v2 (ou Podman: adicione
@@ -47,6 +59,28 @@ Atalhos (`make help` lista todos):
 
 Para usar outra porta: ajuste `APP_PORT` **e** `APP_ORIGIN` no `.env`
 (precisam bater).
+
+---
+
+## Testes de ponta a ponta (smoke test)
+
+Pasta [`e2e/`](e2e/): testes com **Playwright** que exercitam a aplicação
+pela interface do navegador e pela API:
+
+1. registrar → logar → criar, editar e excluir incidente → logout;
+2. incidente de outro usuário retorna `404` (controle de acesso, OWASP A01).
+
+Rodar com a stack local no ar (`make up`):
+
+```bash
+cd e2e
+npm ci
+npm test
+```
+
+O Playwright usa o Google Chrome instalado no sistema (`/usr/bin/google-chrome`,
+ajustável por `CHROME_PATH`), porque o Chromium empacotado não tem build para
+o Ubuntu 26.04. Cada execução usa e-mails únicos, então pode ser repetida.
 
 ---
 
@@ -131,6 +165,21 @@ inteligência artificial na **escrita** e na **auditoria** do código:
   operada pelo aluno.
 
 A revisão final e a responsabilidade pelo código entregue são do autor.
+
+---
+
+## Testes TLS (acesso por IP)
+
+Testes exigidos pelo escopo para o acesso por IP. O Qualys SSL Labs (nota A)
+é o critério para domínio e não se aplica aqui.
+
+| Teste | Alvo | Resultado | Print |
+|---|---|---|---|
+| [SSL.org — SSL Certificate Checker](https://www.ssl.org/) | `163.176.179.49` | Certificate Trusted: **Yes** · Good signature · Good key · cadeia completa · TLS 1.2/1.3 | [ver print](evidencias/tls/ssl-org-163.176.179.49.jpg) |
+| [DigiCert — TLS quantum readiness check](https://www.digicert.com/pqc-checker) | `163.176.179.49` | **Pass**: TLS 1.3 habilitado e troca de chaves pós-quântica ativa | [ver print](evidencias/tls/digicert-pqc-163.176.179.49.jpg) |
+
+Configuração que sustenta os resultados: proxy TLS em `nginx:1.29-alpine`
+(OpenSSL 3.5) com `X25519MLKEM768` — ver [`deploy/README.md`](deploy/README.md) §9.
 
 ---
 

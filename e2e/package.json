@@ -1,0 +1,14 @@
+{
+  "name": "incidenttrack-e2e",
+  "version": "1.0.0",
+  "description": "Smoke test E2E (Playwright) do IncidentTrack",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
+  },
+  "private": true
+}
