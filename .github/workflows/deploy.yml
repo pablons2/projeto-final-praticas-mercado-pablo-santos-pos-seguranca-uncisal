@@ -108,8 +108,10 @@ jobs:
           # O override de produção (proxy TLS + PQC) só entra quando o
           # certificado já existe na VM. Sem ele, sobe só a stack base —
           # rode o bootstrap TLS do guia (deploy/README.md §9).
+          # /etc/letsencrypt pode não ser legível pelo usuário SSH: o teste
+          # usa sudo para não reportar "ausente" com o certificado emitido.
           FILES="-f docker-compose.yml"
-          if [ -f "/etc/letsencrypt/live/${CERT_NAME}/fullchain.pem" ]; then
+          if sudo test -f "/etc/letsencrypt/live/${CERT_NAME}/fullchain.pem"; then
             FILES="${FILES} -f docker-compose.prod.yml"
             echo "-> Certificado ${CERT_NAME} encontrado: subindo com proxy TLS"
           else
