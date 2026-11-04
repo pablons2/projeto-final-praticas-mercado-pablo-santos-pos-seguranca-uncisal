@@ -79,7 +79,9 @@ jobs:
 
   e2e:
     name: E2E — Playwright (stack Docker)
-    runs-on: ubuntu-latest
+    # Fixado no 24.04: o ubuntu-latest já é 26.04, sem suporte do Playwright 1.56
+    # para instalar Chromium/ffmpeg. Trocar só com versão do Playwright que suporte.
+    runs-on: ubuntu-24.04
     # Só roda se backend e frontend passarem. O CD espera esta CI inteira,
     # então um smoke test vermelho também bloqueia o deploy.
     needs: [backend, frontend]
