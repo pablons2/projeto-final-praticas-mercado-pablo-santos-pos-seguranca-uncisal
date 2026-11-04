@@ -29,26 +29,16 @@ const STATUS_OPTIONS: SelectOption[] = [
 interface FilterBarProps {
   filters: IncidentFilters
   onChange: (next: IncidentFilters) => void
-  apenasMeus: boolean
-  onApenasMeusChange: (next: boolean) => void
   total: number
   shown: number
 }
 
-export function FilterBar({
-  filters,
-  onChange,
-  apenasMeus,
-  onApenasMeusChange,
-  total,
-  shown,
-}: FilterBarProps) {
+export function FilterBar({ filters, onChange, total, shown }: FilterBarProps) {
   const hasActiveFilters =
     filters.search !== '' ||
     filters.categoria !== '' ||
     filters.severidade !== '' ||
-    filters.status !== '' ||
-    apenasMeus
+    filters.status !== ''
 
   return (
     <div className="flex flex-col gap-3">
@@ -101,10 +91,9 @@ export function FilterBar({
         {hasActiveFilters ? (
           <button
             type="button"
-            onClick={() => {
+            onClick={() =>
               onChange({ search: '', categoria: '', severidade: '', status: '' })
-              onApenasMeusChange(false)
-            }}
+            }
             className="inline-flex h-11 items-center gap-1.5 rounded-sm px-3 text-sm text-ink-secondary hover:bg-bg-subtle hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
           >
             <Cross2Icon className="h-4 w-4" />
@@ -113,22 +102,11 @@ export function FilterBar({
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-ink-muted" aria-live="polite">
-          {shown === total
-            ? `${total} incidente${total === 1 ? '' : 's'}`
-            : `${shown} de ${total}`}
-        </p>
-        <label className="inline-flex cursor-pointer select-none items-center gap-2 text-sm text-ink-secondary">
-          <input
-            type="checkbox"
-            checked={apenasMeus}
-            onChange={(e) => onApenasMeusChange(e.target.checked)}
-            className="h-4 w-4 cursor-pointer accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
-          />
-          Somente meus incidentes
-        </label>
-      </div>
+      <p className="text-xs text-ink-muted" aria-live="polite">
+        {shown === total
+          ? `${total} incidente${total === 1 ? '' : 's'}`
+          : `${shown} de ${total}`}
+      </p>
     </div>
   )
 }

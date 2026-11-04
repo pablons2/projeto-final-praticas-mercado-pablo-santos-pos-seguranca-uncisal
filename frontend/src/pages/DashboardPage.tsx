@@ -13,7 +13,6 @@ import {
 import { EmptyState } from '@/features/incidents/components/EmptyState'
 import { IncidentFormDialog } from '@/features/incidents/components/IncidentFormDialog'
 import { DeleteConfirmDialog } from '@/features/incidents/components/DeleteConfirmDialog'
-import { useAuth } from '@/context/AuthContext'
 import { useIsDesktop } from '@/lib/useMediaQuery'
 import type { Incident } from '@/lib/api-types'
 import type { IncidentFilters } from '@/features/incidents/schemas/incident.schema'
@@ -27,11 +26,9 @@ const EMPTY_FILTERS: IncidentFilters = {
 
 export function DashboardPage() {
   const isDesktop = useIsDesktop()
-  const { user } = useAuth()
   const { data: incidents, isLoading, isError, refetch, isFetching } = useIncidents()
 
   const [filters, setFilters] = useState<IncidentFilters>(EMPTY_FILTERS)
-  const [apenasMeus, setApenasMeus] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Incident | undefined>(undefined)
   const [deleting, setDeleting] = useState<Incident | null>(null)
@@ -40,7 +37,6 @@ export function DashboardPage() {
     const list = incidents ?? []
     const q = filters.search.trim().toLowerCase()
     return list.filter((inc) => {
-      if (apenasMeus && inc.owner_id !== user?.id) return false
       if (q) {
         const hay = `${inc.titulo} ${inc.descricao}`.toLowerCase()
         if (!hay.includes(q)) return false
@@ -50,7 +46,7 @@ export function DashboardPage() {
       if (filters.status && inc.status !== filters.status) return false
       return true
     })
-  }, [incidents, filters, apenasMeus, user?.id])
+  }, [incidents, filters])
 
   const total = incidents?.length ?? 0
 
@@ -97,8 +93,6 @@ export function DashboardPage() {
             <FilterBar
               filters={filters}
               onChange={setFilters}
-              apenasMeus={apenasMeus}
-              onApenasMeusChange={setApenasMeus}
               total={total}
               shown={filtered.length}
             />
